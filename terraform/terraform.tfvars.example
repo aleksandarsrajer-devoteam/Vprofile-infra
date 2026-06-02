@@ -1,5 +1,5 @@
 # Copy this file to terraform.tfvars and fill in the values.
-# terraform.tfvars is gitignored — NEVER commit it.
+
 
 project_id  = "your-gcp-project-id"
 region      = "europe-west3"
