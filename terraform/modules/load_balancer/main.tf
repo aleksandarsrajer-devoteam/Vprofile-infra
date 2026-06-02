@@ -5,7 +5,7 @@ resource "google_compute_health_check" "http_health_check" {
 
   http_health_check {
     port         = 8080
-    request_path = "/" # Proverava korensku stranicu Tomcata
+    request_path = "/" # Checking the root page of app
   }
 }
 
@@ -20,6 +20,30 @@ resource "google_compute_backend_service" "backend_service" {
   port_name             = "http" # Ovo mora da se poklapa sa named_port iz compute modula
   load_balancing_scheme = "EXTERNAL_MANAGED"
   health_checks         = [google_compute_health_check.http_health_check.id]
+
+  # Attach the Cloud Armor WAF policy — all traffic is inspected before
+  # reaching the Tomcat MIG (OWASP Top 10 + rate limiting + Adaptive Protection)
+  security_policy = google_compute_security_policy.vprofile_waf.id
+
+  # ── Cloud CDN ──────────────────────────────────────────────────────────────
+  # Caches static assets (CSS, JS, images, fonts) at Google's global edge PoPs.
+  # Static requests are served from cache and never hit the Tomcat MIG.
+  # Dynamic requests (JSP pages, login, API calls) always pass through.
+  enable_cdn = true
+
+  cdn_policy {
+    cache_mode       = "CACHE_ALL_STATIC" # Auto-detects static MIME types and caches them
+    default_ttl      = 3600               # 1 hour — how long edge caches the object
+    max_ttl          = 86400              # 24 hours — ceiling if origin sets a longer TTL
+    client_ttl       = 3600              # 1 hour — browser-side cache TTL
+    negative_caching = true              # Cache 404s to protect Tomcat from repeated misses
+
+    cache_key_policy {
+      include_host         = true  # Separate cache per hostname (good for wildcard cert setup)
+      include_protocol     = true  # Separate cache for HTTP vs HTTPS
+      include_query_string = false # Ignore query strings for static files (?v=123 won't bypass cache)
+    }
+  }
 
   backend {
     group           = var.instance_group

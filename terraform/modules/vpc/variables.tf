@@ -21,6 +21,8 @@ variable "gcp_apis" {
     "sqladmin.googleapis.com",
     "memcache.googleapis.com",
     "servicenetworking.googleapis.com",
-    "certificatemanager.googleapis.com"
+    "certificatemanager.googleapis.com",
+    "secretmanager.googleapis.com",
+    "iam.googleapis.com"
   ]
 }

@@ -1,0 +1,13 @@
+# Copy this file to terraform.tfvars and fill in the values.
+# terraform.tfvars is gitignored — NEVER commit it.
+
+project_id  = "your-gcp-project-id"
+region      = "europe-west3"
+zone        = "europe-west3-a"
+vpc_name    = "vprofile-vpc"
+subnet_cidr = "172.20.1.0/24"
+domain      = "your-domain.xyz"
+
+# DB password — this value is stored in Secret Manager by Terraform.
+# VMs fetch it at runtime; it is never stored in instance metadata.
+db_password = "REPLACE_WITH_STRONG_PASSWORD"

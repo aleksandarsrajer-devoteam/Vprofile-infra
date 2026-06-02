@@ -13,8 +13,12 @@ variable "db_private_ip" {
   description = "The private IP address of the Cloud SQL MySQL instance"
 }
 
-variable "db_password" {
+variable "project_id" {
   type        = string
-  sensitive   = true
-  description = "The root password for the MySQL database"
+  description = "GCP project ID — required for SA creation and IAM bindings"
+}
+
+variable "db_secret_id" {
+  type        = string
+  description = "The Secret Manager secret ID (name) for the DB password. The init script fetches the value at runtime — this is NOT the password itself."
 }

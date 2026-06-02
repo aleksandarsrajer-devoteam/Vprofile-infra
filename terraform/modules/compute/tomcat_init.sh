@@ -1,8 +1,20 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 echo "Cekamo stabilizaciju mreze..."
 sleep 60
+
+# ── Fetch DB password from Secret Manager at runtime ────────────────────────
+# The Tomcat VM's Service Account (vprofile-tomcat-sa) has been granted
+# roles/secretmanager.secretAccessor by Terraform.
+# gcloud authenticates automatically via the GCE metadata server —
+# no credentials file, no hardcoded password, nothing in instance metadata.
+echo "Preuzimanje DB lozinke iz Secret Managera..."
+DB_PASSWORD=$(gcloud secrets versions access latest \
+  --secret="vprofile-db-password" \
+  --format="get(payload.data)" | base64 --decode)
+echo "DB lozinka uspesno preuzeta."
+# ─────────────────────────────────────────────────────────────────────────────
 
 echo "Instalacija Jave i osnovnih alata..."
 apt update -y
@@ -54,10 +66,17 @@ cp -r apache-maven-3.9.9 /usr/local/maven3.9
 
 export MAVEN_OPTS="-Xmx512m"
 
-echo "Kloniranje koda sa gcp grane i bildovanje aplikacije..."
-git clone -b gcp https://github.com/hkhcoder/vprofile-project.git
-cd vprofile-project
-/usr/local/maven3.9/bin/mvn install
+echo "Kloniranje koda sa main grane i bildovanje aplikacije..."
+git clone -b main https://github.com/aleksandarsrajer-devoteam/Vprofile-app.git
+cd Vprofile-app
+
+# ── Inject the DB password into the application properties before building ───
+# Adjust the sed pattern below if your properties key name differs.
+sed -i "s|^db\.password=.*|db.password=${DB_PASSWORD}|" \
+  src/main/resources/application.properties
+# ─────────────────────────────────────────────────────────────────────────────
+
+/usr/local/maven3.9/bin/mvn install -DskipTests
 
 echo "Deploy-ovanje aplikacije u Tomcat..."
 systemctl stop tomcat
@@ -69,4 +88,8 @@ sleep 20
 
 ufw allow 8080/tcp || true
 systemctl restart tomcat
+
+# Clear the password variable from memory as a hygiene step
+unset DB_PASSWORD
+
 echo "Tomcat je uspesno konfigurisan i pokrenut!"

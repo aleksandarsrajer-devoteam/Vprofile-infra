@@ -27,3 +27,9 @@ variable "domain" {
   type = string
   description = "Domain of our project"
 }
+
+variable "db_password" {
+  type        = string
+  sensitive   = true
+  description = "DB root password — set in terraform.tfvars (never commit to git)"
+}
