@@ -1,0 +1,44 @@
+name: "Deploy — Orchestrator Router"
+
+on:
+  repository_dispatch:
+    types: [deploy]
+
+env:
+  PROJECT_ID: sara-sandbox-interns
+  WIF_PROVIDER: ${{ secrets.WIF_PROVIDER }}
+  GH_ACTIONS_SA: ${{ secrets.GH_ACTIONS_SA }}
+
+jobs:
+  bake-and-deploy:
+    name: "Route and Execute"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      # KLUČNI KORAK: Ovaj workflow se budi na main-u, ali ODMAH povlači kod sa tvoje razvojne grane!
+      - name: Checkout infra repo (Dynamic Branch)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.target_infra_branch || 'main' }}
+
+      # Odavde nabolje, trkač (runner) koristi skripte i konfiguraciju sa grane Ansible/Packer!
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.GH_ACTIONS_SA }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Verify Download from GCS
+        run: |
+          GCS_PATH="${{ github.event.client_payload.gcs_war_path }}"
+          echo "Uspješno povučena grana: ${{ github.event.client_payload.target_infra_branch }}"
+          echo "Pokušavam skinuti artefakt sa putanje: ${GCS_PATH}"
+          gcloud storage cp "${GCS_PATH}" ./vprofile-v2.war
+          echo "✅ USPEH! Fajl je na lokaciji."
+          ls -lh ./vprofile-v2.war
