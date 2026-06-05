@@ -11,6 +11,7 @@ locals {
     "roles/dns.admin",                       # Manage Cloud DNS zones and records
     "roles/certificatemanager.editor",       # Manage Certificate Manager certs
     "roles/resourcemanager.projectIamAdmin", # Set IAM policies on resources
+    "roles/iap.tunnelResourceAccessor"
   ]
 }
 

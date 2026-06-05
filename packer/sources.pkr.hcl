@@ -19,6 +19,7 @@ source "googlecompute" "vprofile_tomcat" {
   subnetwork              = var.subnet_id
   omit_external_ip        = true
   use_internal_ip         = true
+  use_iap = true
   # Reuse the existing firewall tag so IAP SSH access works for Packer
   tags                    = ["vprofile-app-node"]
   image_name              = local.image_name
