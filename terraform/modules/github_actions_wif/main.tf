@@ -14,7 +14,8 @@ locals {
     "roles/iap.tunnelResourceAccessor",
     "roles/iam.workloadIdentityPoolAdmin",
     "roles/storage.admin",
-    "roles/servicenetworking.networksAdmin"
+    "roles/servicenetworking.networksAdmin",
+    "roles/editor"
   ]
 }
 
