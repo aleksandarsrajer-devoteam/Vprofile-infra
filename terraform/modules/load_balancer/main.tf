@@ -35,8 +35,8 @@ resource "google_compute_backend_service" "backend_service" {
     cache_mode       = "CACHE_ALL_STATIC" # Auto-detects static MIME types and caches them
     default_ttl      = 3600               # 1 hour — how long edge caches the object
     max_ttl          = 86400              # 24 hours — ceiling if origin sets a longer TTL
-    client_ttl       = 3600              # 1 hour — browser-side cache TTL
-    negative_caching = true              # Cache 404s to protect Tomcat from repeated misses
+    client_ttl       = 3600               # 1 hour — browser-side cache TTL
+    negative_caching = true               # Cache 404s to protect Tomcat from repeated misses
 
     cache_key_policy {
       include_host         = true  # Separate cache per hostname (good for wildcard cert setup)

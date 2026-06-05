@@ -26,14 +26,19 @@ resource "google_project_iam_member" "tomcat_observability_permission" {
 
 # ── Instance Template ────────────────────────────────────────────────────────
 resource "google_compute_region_instance_template" "tomcat_template" {
-  name         = "vprofile-tomcat-template"
+  # name_prefix lets Terraform generate a unique name on each apply.
+  # Combined with create_before_destroy, this allows zero-downtime template rotation:
+  # new template is created first, MIG switches to it, old template is deleted.
+  name_prefix  = "vprofile-tomcat-"
   machine_type = "e2-small"
   region       = var.region
 
   tags = ["vprofile-app-node"]
 
   disk {
-    source_image = "ubuntu-os-cloud/ubuntu-2404-lts-amd64"
+    # Defaults to ubuntu base image for bootstrap (first terraform apply).
+    # After the first pipeline run, GitHub Actions sets this to the Packer image.
+    source_image = var.image_id
     auto_delete  = true
     boot         = true
     disk_size_gb = 20
@@ -72,6 +77,17 @@ resource "google_compute_region_instance_group_manager" "tomcat_mig" {
   named_port {
     name = "http"
     port = 8080
+  }
+
+  # PROACTIVE: GCP automatically starts a rolling update whenever the MIG's
+  # instance template changes. Combined with maxSurge=1/maxUnavailable=0,
+  # this gives zero-downtime deployments with no extra gcloud commands needed.
+  update_policy {
+    type                  = "PROACTIVE"
+    minimal_action        = "REPLACE"
+    max_surge_fixed       = 1
+    max_unavailable_fixed = 0
+    replacement_method    = "SUBSTITUTE"
   }
 
   lifecycle {

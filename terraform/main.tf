@@ -20,7 +20,7 @@ module "database" {
   vpc_id      = module.network.vpc_id
   vpc_name    = var.vpc_name
   region      = var.region
-  db_password = var.db_password 
+  db_password = var.db_password
 
   depends_on = [module.network]
 }
@@ -47,12 +47,13 @@ module "dns" {
 
 
 module "compute" {
-  source        = "./modules/compute"
-  zone          = var.zone
-  region        = var.region
-  subnet_id     = module.network.subnet_id
-  project_id    = var.project_id
-  db_secret_id  = module.secrets.secret_id # Passes the secret NAME, not the password itself
+  source       = "./modules/compute"
+  zone         = var.zone
+  region       = var.region
+  subnet_id    = module.network.subnet_id
+  project_id   = var.project_id
+  db_secret_id = module.secrets.secret_id
+  image_id     = var.image_id
 
   depends_on = [module.network, module.database, module.secrets]
 }
@@ -67,3 +68,16 @@ module "load_balancer" {
   instance_group     = module.compute.instance_group
   certificate_map_id = module.certificates.certificate_map_id
 }
+
+# ── Workload Identity Federation ──────────────────────────────────────────────
+# Enables GitHub Actions to authenticate to GCP without SA key files.
+# After terraform apply, run: terraform output -module=github_actions_wif
+# Copy the two output values into GitHub Secrets: WIF_PROVIDER + GH_ACTIONS_SA
+module "github_actions_wif" {
+  source              = "./modules/github_actions_wif"
+  project_id          = var.project_id
+  region              = var.region
+  tfstate_bucket_name = "vprofile-tfstate"
+}
+
+

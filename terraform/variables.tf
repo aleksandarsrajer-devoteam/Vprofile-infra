@@ -19,12 +19,12 @@ variable "vpc_name" {
 }
 
 variable "subnet_cidr" {
-  type = string
+  type        = string
   description = "The CIDR Range of subnet"
 }
 
 variable "domain" {
-  type = string
+  type        = string
   description = "Domain of our project"
 }
 
@@ -32,4 +32,10 @@ variable "db_password" {
   type        = string
   sensitive   = true
   description = "DB root password — set in terraform.tfvars (never commit to git)"
+}
+
+variable "image_id" {
+  type        = string
+  description = "GCE image self_link from Packer. Defaults to ubuntu base for first terraform apply (bootstrap). Set via TF_VAR_image_id by the deploy pipeline."
+  default     = "ubuntu-os-cloud/ubuntu-2404-lts-amd64"
 }
