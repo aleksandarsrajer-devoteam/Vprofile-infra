@@ -1,0 +1,35 @@
+---
+- name: Create /etc/tomcat directory for runtime environment file
+  ansible.builtin.file:
+    path: /etc/tomcat
+    state: directory
+    owner: root
+    group: tomcat
+    mode: '0750'
+
+- name: Remove default Tomcat ROOT webapp
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ tomcat_home }}/webapps/ROOT"
+    - "{{ tomcat_home }}/webapps/ROOT.war"
+
+- name: Remove default Tomcat example webapps
+  ansible.builtin.file:
+    path: "{{ tomcat_home }}/webapps/{{ item }}"
+    state: absent
+  loop:
+    - examples
+    - docs
+    - host-manager
+    - manager
+
+- name: Deploy VProfile WAR as ROOT application
+  ansible.builtin.copy:
+    src: "{{ war_src }}"
+    dest: "{{ tomcat_home }}/webapps/ROOT.war"
+    owner: tomcat
+    group: tomcat
+    mode: '0640'
+    remote_src: true

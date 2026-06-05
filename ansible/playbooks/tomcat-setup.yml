@@ -1,0 +1,27 @@
+---
+# This playbook is executed by Packer during the image bake.
+# Packer connects to the temporary build VM and runs this playbook.
+# The result is a GCE image with Java, Tomcat, and the VProfile WAR pre-installed.
+#
+# Execution order:
+#   1. java role       — installs OpenJDK 17
+#   2. tomcat role     — installs Tomcat 10, configures systemd service
+#   3. vprofile-app    — deploys ROOT.war, sets up /etc/tomcat directory
+#
+# What this playbook does NOT do:
+#   - Set the DB password (fetched at boot by tomcat_init.sh from Secret Manager)
+#   - Start Tomcat (the startup script starts it after writing /etc/tomcat/app.env)
+
+- name: Bake VProfile Tomcat golden image
+  hosts: all #Tells Ansible on witch servers to run this playbook on.
+  become: true #To run all commands in SUDO
+
+  vars:
+    tomcat_version: "10.1.26"
+    tomcat_home: "/usr/local/tomcat"
+    
+
+  roles: #Order in witch this playbook calls the roles
+    - java
+    - tomcat
+    - vprofile-app
