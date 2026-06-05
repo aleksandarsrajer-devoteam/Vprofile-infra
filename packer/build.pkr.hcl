@@ -20,6 +20,7 @@ build {
 
   provisioner "ansible" {
     playbook_file   = "ansible/playbooks/tomcat-setup.yml"
+    roles_path      = "ansible/roles"
     user            = "packer"
     extra_arguments = [
       "--extra-vars", "war_src=/tmp/vprofile-v2.war",
