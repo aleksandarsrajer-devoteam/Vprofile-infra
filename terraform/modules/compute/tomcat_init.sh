@@ -23,6 +23,14 @@ WAR_FILE="/usr/local/tomcat/webapps/ROOT.war"
 PROPS_PATH="WEB-INF/classes/application.properties"
 WORK_DIR=$(mktemp -d)
 
+if [ ! -f "$WAR_FILE" ]; then
+    echo "[startup] ⚠️ PAŽNJA: ROOT.war nije pronađen na ovoj mašini!"
+    echo "[startup] Zaključujem da je ovo nulta (bootstrap) faza i da mašina vrti čist OS."
+    echo "[startup] Gasim izvršavanje skripte bez greške. Čekam pravi pipeline da me zameni."
+    rm -rf "${WORK_DIR}"
+    exit 0
+fi
+
 # ── Step 1: Fetch DB password from Secret Manager ────────────────────────────
 # The tomcat SA (vprofile-tomcat-sa) has roles/secretmanager.secretAccessor.
 # gcloud authenticates automatically via the GCE metadata server — no key file.
