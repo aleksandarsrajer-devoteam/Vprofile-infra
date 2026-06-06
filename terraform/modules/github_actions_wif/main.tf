@@ -24,7 +24,7 @@ locals {
 # The trust anchor. GCP uses this pool to accept identity tokens from GitHub.
 resource "google_iam_workload_identity_pool" "github" {
   project                   = var.project_id
-  workload_identity_pool_id = "github-actions-pool"
+  workload_identity_pool_id = "github-actions-pool-v2"
   display_name              = "GitHub Actions Pool"
   description               = "Allows GitHub Actions workflows to authenticate to GCP without SA key files"
 }
