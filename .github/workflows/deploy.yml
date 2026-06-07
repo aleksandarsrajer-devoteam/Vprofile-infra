@@ -1,7 +1,5 @@
-name: "Deploy — Bake Image & Rolling Update"
+name: "Deploy — App Rolling Update (via Repository Dispatch)"
 
-# Triggered by the Vprofile-app repo after it builds and uploads the WAR to GCS.
-# Payload contains: git_sha, gcs_war_path
 on:
   repository_dispatch:
     types: [deploy]
@@ -9,29 +7,25 @@ on:
 env:
   PROJECT_ID:  sara-sandbox-interns
   REGION:      europe-west3
-  ZONE:        europe-west3-a
-  VPC_NAME:    vprofile-vpc
-  SUBNET_CIDR: "172.20.1.0/24"
-  DOMAIN:      srajer.xyz
   MIG_NAME:    vprofile-tomcat-mig
-  # Full self_link of the private subnet — used by Packer to build inside the VPC
-  SUBNET_SELF_LINK: "projects/sara-sandbox-interns/regions/europe-west3/subnetworks/vprofile-vpc-private-subnet"
+  # Ovo je fiksna putanja koju tvoja tomcat_init.sh skripta na Cloudu uvek traži na boot-u
+  FINAL_GCS_WAR: "gs://vprofile-build-artifacts/vprofile-latest.war"
 
 jobs:
-  bake-and-deploy:
-    name: "Bake Image & Deploy"
+  deploy-app:
+    name: "Promote WAR & Restart MIG"
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write   # Required for Workload Identity Federation
+      id-token: write   # Potrebno za Workload Identity Federation
 
     steps:
-      - name: Checkout infra repo (Packer templates + Ansible roles live here)
+      - name: Checkout infra repo
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.client_payload.target_infra_branch || 'main' }}
 
-      - name: Authenticate to GCP (WIF — no key files)
+      - name: Authenticate to GCP (WIF)
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
@@ -40,95 +34,42 @@ jobs:
       - name: Set up gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
-      # ── Step 1: Download the WAR from GCS ──────────────────────────────────
-      # The Vprofile-app pipeline built and uploaded this WAR.
-      # We just need to download it to this runner before passing it to Packer.
-      - name: Download WAR from GCS
+      # ── Korak 1: Uzimamo novi .war iz payload-a i prelepljujemo "latest" na bucketu ──
+      # Developerov pipeline ti šalje tačnu GCS putanju gde je tek kompajliran .war (npr. sa tagom ili SHA)
+      # Mi taj fajl samo kopiramo na našu glavnu lokaciju koju mašine čitaju.
+      - name: Promote new WAR to Latest
         run: |
-          GCS_PATH="${{ github.event.client_payload.gcs_war_path }}"
-          echo "Downloading WAR from: ${GCS_PATH}"
-          gcloud storage cp "${GCS_PATH}" ./vprofile-v2.war
-          ls -lh ./vprofile-v2.war
-      
-      - name: Ending
-        run : echo "Shit works up until this point :)"
-
-      # ── Step 2: Bake the image with Packer + Ansible ───────────────────────
-      - name: Install Packer
-        uses: hashicorp/setup-packer@main
-        with:
-          version: "1.11.0"
-
-      - name: Install Ansible
-        run: pip install ansible --quiet
-
-      - name: Packer Init (download googlecompute + ansible plugins)
-        run: packer init ./packer/
-
-      - name: Packer Build
-        id: packer
-        env:
-          PACKER_LOG: 1
-        run: |
+          SRC_WAR="${{ github.event.client_payload.gcs_war_path }}"
           GIT_SHA="${{ github.event.client_payload.git_sha }}"
+          
+          echo "Processing deploy for commit: ${GIT_SHA}"
+          echo "Promoting new build from ${SRC_WAR} to ${{ env.FINAL_GCS_WAR }}"
+          
+          gcloud storage cp "${SRC_WAR}" "${{ env.FINAL_GCS_WAR }}"
+          echo "✅ Novi .war je uspešno postavljen kao podrazumevani!"
 
-          packer build \
-            -var "project_id=${{ env.PROJECT_ID }}" \
-            -var "zone=${{ env.ZONE }}" \
-            -var "subnet_id=${{ env.SUBNET_SELF_LINK }}" \
-            -var "git_sha=${GIT_SHA}" \
-            -var "war_path=./vprofile-v2.war" \
-            ./packer/
-
-          # Read the image self_link from Packer's manifest output
-          IMAGE=$(jq -r '.builds[-1].artifact_id' packer/manifest.json)
-          echo "image_self_link=${IMAGE}" >> $GITHUB_OUTPUT
-          echo "✅ Image built: ${IMAGE}"
-
-      # ── Step 3: Update instance template via Terraform ─────────────────────
-      # Pass the new image as TF_VAR_image_id. Terraform will:
-      #   1. Create a new instance template (name_prefix generates unique name)
-      #   2. Update the MIG to point to the new template
-      #   3. Delete the old template (create_before_destroy handles ordering)
-      # The MIG's PROACTIVE update_policy then automatically starts rolling update.
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~> 1.5"
-          terraform_wrapper: false  # Disable wrapper so we can capture output cleanly
-
-      - name: Terraform Init
-        run: terraform -chdir=terraform init
-
-      - name: Terraform Apply (update instance template with new image)
-        env:
-          TF_VAR_project_id:  ${{ env.PROJECT_ID }}
-          TF_VAR_region:      ${{ env.REGION }}
-          TF_VAR_zone:        ${{ env.ZONE }}
-          TF_VAR_vpc_name:    ${{ env.VPC_NAME }}
-          TF_VAR_subnet_cidr: ${{ env.SUBNET_CIDR }}
-          TF_VAR_domain:      ${{ env.DOMAIN }}
-          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-          TF_VAR_image_id:    ${{ steps.packer.outputs.image_self_link }}
+      # ── Korak 2: Naređujemo MIG-u da uradi rolling restart (Zero-Downtime) ──
+      # Pošto je polisa OPPORTUNISTIC, komanda 'restart' će naterati mašine da se rekreiraju jedna po jedna.
+      # Kada se nova mašina upali, ona će pokrenuti našu novu 'tomcat_init.sh' skriptu,
+      # povući ovaj "vprofile-latest.war" što smo malopre zamenili, srediti bazu i podići novu verziju!
+      - name: Trigger Rolling Restart on MIG
         run: |
-          terraform -chdir=terraform apply -auto-approve
-          echo "✅ Instance template updated in Terraform state"
+          echo "Naređujem MIG-u '${{ env.MIG_NAME }}' da rotira mašine..."
+          gcloud compute instance-groups managed rolling-action restart ${{ env.MIG_NAME }} \
+            --region=${{ env.REGION }} \
+            --max-surge=3 \
+            --max-unavailable=0
 
-      # ── Step 4: Wait for the rolling update to complete ────────────────────
-      # The PROACTIVE update_policy means GCP started the rolling update
-      # automatically when Terraform updated the MIG template.
-      # This step just waits for it to finish before marking the pipeline green.
-      - name: Wait for MIG rolling update to stabilize
+      # ── Korak 3: Čekamo da se sve mašine uspešno podignu i povuku kod ──
+      - name: Wait for MIG to stabilize
         run: |
-          echo "Waiting for MIG '${MIG_NAME}' to stabilize..."
-          gcloud compute instance-groups managed wait-until \
-            ${{ env.MIG_NAME }} \
+          echo "Čekam da nove mašine prođu Health Check-ove sa novim kodom..."
+          gcloud compute instance-groups managed wait-until ${{ env.MIG_NAME }} \
             --region=${{ env.REGION }} \
             --stable \
-            --timeout=600
+            --timeout=400
 
-          echo "✅ Rolling update complete. Final instance state:"
-          gcloud compute instance-groups managed list-instances \
-            ${{ env.MIG_NAME }} \
+          echo "✅ Nova verzija aplikacije je uspešno puštena bez sekunde downtime-a!"
+          gcloud compute instance-groups managed list-instances ${{ env.MIG_NAME }} \
             --region=${{ env.REGION }} \
             --format="table(name,status,currentAction,version.instanceTemplate)"
