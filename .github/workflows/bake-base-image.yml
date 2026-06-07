@@ -1,6 +1,6 @@
 name: "Infra — Manual Base Image Bake"
 
-# Pokreće se ISKLJUČIVO ručno sa GitHub Actions interfejsa (dugme "Run workflow")
+# Triggered ONLY manually from the GitHub Actions interface (the "Run workflow" button)
 on:
   workflow_dispatch:
 
@@ -16,49 +16,49 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write   # Obavezno za Workload Identity Federation (WIF)
+      id-token: write   # Required for Workload Identity Federation (WIF)
 
     steps:
-      # ── Korak 1: Preuzimanje infra koda (Gde su Packer i Ansible) ──────────
+      # ── Step 1: Check out the infra repo (contains Packer templates and Ansible roles) ────────
       - name: Checkout Infra Code
         uses: actions/checkout@v4
         with:
           ref: 'Ansible/Packer'
 
-      # ── Korak 2: Autentifikacija na Google Cloud preko WIF-a ───────────────
+      # ── Step 2: Authenticate to Google Cloud via WIF ───────────────────────
       - name: Authenticate to GCP (WIF)
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.GH_ACTIONS_SA }}
 
-      # ── Korak 3: Podešavanje gcloud CLI alata ──────────────────────────────
+      # ── Step 3: Set up gcloud CLI ──────────────────────────────────────────────
       - name: Set up gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
-      # ── Korak 4: Instalacija i inicijalizacija Packera ─────────────────────
+      # ── Step 4: Install and initialise Packer ─────────────────────────────────────────
       - name: Install Packer
         uses: hashicorp/setup-packer@main
         with:
           version: "1.11.0"
 
-      # ── Korak 5: Instalacija Ansible-a (Potreban Packeru na runneru) ───────
+      # ── Step 5: Install Ansible (required by the Packer Ansible provisioner on the runner) ───
       - name: Install Ansible
         run: pip install ansible --quiet
 
-      # ── Korak 6: Packer Init (Preuzimanje GCP i Ansible pluginova) ─────────
+      # ── Step 6: Packer Init (download GCP and Ansible plugins) ───────────────────────
       - name: Packer Init
         run: packer init ./packer/
 
-      # ── Korak 7: Pokretanje Packer Build-a (Čista ljuštura) ────────────────
+      # ── Step 7: Run Packer Build (bake the clean base image) ──────────────────────────
       - name: Packer Build
         env:
-          PACKER_LOG: 1   # Omogućava detaljan ispis logova ako nešto pukne
+          PACKER_LOG: 1   # Enables verbose log output — useful for debugging Packer failures
         run: |
-          # Izvlačimo kratak Git SHA od infra repoa za labelu i ime slike
+          # Extract a short Git SHA from the infra repo to use as the image name label
           GIT_SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-8)
           
-          echo "Pokrećem pečenje slike sa oznakom: ${GIT_SHA_SHORT}"
+          echo "Starting image bake with label: ${GIT_SHA_SHORT}"
           
           packer build \
             -var "project_id=${{ env.PROJECT_ID }}" \
@@ -67,4 +67,4 @@ jobs:
             -var "git_sha=${GIT_SHA_SHORT}" \
             ./packer/
             
-          echo "✅ Novi Base Image je uspešno kreiran u 'vprofile-base' familiji!"
+          echo "✅ New Base Image successfully created in the 'vprofile-base' family!"
