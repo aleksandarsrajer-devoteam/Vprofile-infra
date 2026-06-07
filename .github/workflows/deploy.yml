@@ -1,0 +1,76 @@
+name: "Deploy — App Rolling Update (via Repository Dispatch)"
+
+on:
+  repository_dispatch:
+    types: [deploy]
+
+env:
+  PROJECT_ID:  sara-sandbox-interns
+  REGION:      europe-west3
+  MIG_NAME:    vprofile-tomcat-mig
+  # Fixed path that every instance's tomcat_init.sh always reads at boot
+  FINAL_GCS_WAR: "gs://vprofile-build-artifacts/vprofile-latest.war"
+
+jobs:
+  deploy-app:
+    name: "Promote WAR & Restart MIG"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # Required for Workload Identity Federation
+
+    steps:
+      - name: Checkout infra repo
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.client_payload.target_infra_branch || 'main' }}
+
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GH_ACTIONS_SA }}
+
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ── Step 1: Promote the new .war from the payload to the canonical "latest" path on GCS ──
+      # The developer pipeline sends the exact GCS path of the freshly compiled .war
+      # (e.g. tagged by commit SHA). We simply copy it to the canonical location
+      # that every instance reads at boot.
+      - name: Promote new WAR to Latest
+        run: |
+          SRC_WAR="${{ github.event.client_payload.gcs_war_path }}"
+          GIT_SHA="${{ github.event.client_payload.git_sha }}"
+          
+          echo "Processing deploy for commit: ${GIT_SHA}"
+          echo "Promoting new build from ${SRC_WAR} to ${{ env.FINAL_GCS_WAR }}"
+          
+          gcloud storage cp "${SRC_WAR}" "${{ env.FINAL_GCS_WAR }}"
+          echo "✅ New .war successfully promoted to latest!"
+
+      # ── Step 2: Instruct the MIG to perform a rolling REPLACE (Zero-Downtime) ──
+      # Using 'replace' instead of 'restart' because 'replace' supports --max-surge.
+      # GCP first boots a new instance (surge=1), which pulls the new .war at startup,
+      # and only once it passes health checks does GCP terminate the old instance.
+      - name: Trigger Rolling Replace on MIG
+        run: |
+          echo "Instructing MIG '${{ env.MIG_NAME }}' to safely replace instances..."
+          gcloud compute instance-groups managed rolling-action replace ${{ env.MIG_NAME }} \
+            --region=${{ env.REGION }} \
+            --max-surge=3 \
+            --max-unavailable=0
+
+      # # ── Step 3: Wait for all instances to boot and pull the new code ──
+      # - name: Wait for MIG to stabilize
+      #   run: |
+      #     echo "Waiting for new instances to pass health checks with the new code..."
+      #     gcloud compute instance-groups managed wait-until ${{ env.MIG_NAME }} \
+      #       --region=${{ env.REGION }} \
+      #       --stable \
+      #       --timeout=400
+
+      #     echo "✅ New application version successfully released with zero downtime!"
+      #     gcloud compute instance-groups managed list-instances ${{ env.MIG_NAME }} \
+      #       --region=${{ env.REGION }} \
+      #       --format="table(name,status,currentAction,version.instanceTemplate)"

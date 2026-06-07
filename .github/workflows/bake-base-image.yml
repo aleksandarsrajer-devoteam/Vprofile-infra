@@ -1,0 +1,70 @@
+name: "Infra — Manual Base Image Bake"
+
+# Triggered ONLY manually from the GitHub Actions interface (the "Run workflow" button)
+on:
+  workflow_dispatch:
+
+env:
+  PROJECT_ID:  sara-sandbox-interns
+  REGION:      europe-west3
+  ZONE:        europe-west3-a
+  SUBNET_SELF_LINK: "projects/sara-sandbox-interns/regions/europe-west3/subnetworks/vprofile-vpc-private-subnet"
+
+jobs:
+  bake-base-image:
+    name: "Packer Bake Base Image"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # Required for Workload Identity Federation (WIF)
+
+    steps:
+      # ── Step 1: Check out the infra repo (contains Packer templates and Ansible roles) ────────
+      - name: Checkout Infra Code
+        uses: actions/checkout@v4
+        with:
+          ref: 'Ansible/Packer'
+
+      # ── Step 2: Authenticate to Google Cloud via WIF ───────────────────────
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GH_ACTIONS_SA }}
+
+      # ── Step 3: Set up gcloud CLI ──────────────────────────────────────────────
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ── Step 4: Install and initialise Packer ─────────────────────────────────────────
+      - name: Install Packer
+        uses: hashicorp/setup-packer@main
+        with:
+          version: "1.11.0"
+
+      # ── Step 5: Install Ansible (required by the Packer Ansible provisioner on the runner) ───
+      - name: Install Ansible
+        run: pip install ansible --quiet
+
+      # ── Step 6: Packer Init (download GCP and Ansible plugins) ───────────────────────
+      - name: Packer Init
+        run: packer init ./packer/
+
+      # ── Step 7: Run Packer Build (bake the clean base image) ──────────────────────────
+      - name: Packer Build
+        env:
+          PACKER_LOG: 1   # Enables verbose log output — useful for debugging Packer failures
+        run: |
+          # Extract a short Git SHA from the infra repo to use as the image name label
+          GIT_SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-8)
+          
+          echo "Starting image bake with label: ${GIT_SHA_SHORT}"
+          
+          packer build \
+            -var "project_id=${{ env.PROJECT_ID }}" \
+            -var "zone=${{ env.ZONE }}" \
+            -var "subnet_id=${{ env.SUBNET_SELF_LINK }}" \
+            -var "git_sha=${GIT_SHA_SHORT}" \
+            ./packer/
+            
+          echo "✅ New Base Image successfully created in the 'vprofile-base' family!"

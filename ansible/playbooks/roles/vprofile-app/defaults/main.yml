@@ -1,0 +1,3 @@
+---
+tomcat_home: "/usr/local/tomcat"
+war_src: "/tmp/vprofile-v2.war"
