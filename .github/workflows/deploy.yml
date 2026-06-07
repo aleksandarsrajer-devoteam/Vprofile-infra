@@ -48,14 +48,14 @@ jobs:
           gcloud storage cp "${SRC_WAR}" "${{ env.FINAL_GCS_WAR }}"
           echo "✅ Novi .war je uspešno postavljen kao podrazumevani!"
 
-      # ── Korak 2: Naređujemo MIG-u da uradi rolling restart (Zero-Downtime) ──
-      # Pošto je polisa OPPORTUNISTIC, komanda 'restart' će naterati mašine da se rekreiraju jedna po jedna.
-      # Kada se nova mašina upali, ona će pokrenuti našu novu 'tomcat_init.sh' skriptu,
-      # povući ovaj "vprofile-latest.war" što smo malopre zamenili, srediti bazu i podići novu verziju!
-      - name: Trigger Rolling Restart on MIG
+      # ── Korak 2: Naređujemo MIG-u da uradi rolling REPLACE (Zero-Downtime) ──
+      # Koristimo 'replace' umesto 'restart' jer 'replace' dozvoljava --max-surge.
+      # Na ovaj način Google prvo pali novu mašinu (surge=1), ona povlači novi .war,
+      # i tek kad postane zdrava, Google ubija staru mašinu.
+      - name: Trigger Rolling Replace on MIG
         run: |
-          echo "Naređujem MIG-u '${{ env.MIG_NAME }}' da rotira mašine..."
-          gcloud compute instance-groups managed rolling-action restart ${{ env.MIG_NAME }} \
+          echo "Naređujem MIG-u '${{ env.MIG_NAME }}' da bezbedno zameni mašine..."
+          gcloud compute instance-groups managed rolling-action replace ${{ env.MIG_NAME }} \
             --region=${{ env.REGION }} \
             --max-surge=3 \
             --max-unavailable=0
