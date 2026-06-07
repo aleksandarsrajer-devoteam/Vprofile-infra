@@ -1,0 +1,68 @@
+name: "Infra — Manual Base Image Bake"
+
+# Pokreće se ISKLJUČIVO ručno sa GitHub Actions interfejsa (dugme "Run workflow")
+on:
+  workflow_dispatch:
+
+env:
+  PROJECT_ID:  sara-sandbox-interns
+  REGION:      europe-west3
+  ZONE:        europe-west3-a
+  SUBNET_SELF_LINK: "projects/sara-sandbox-interns/regions/europe-west3/subnetworks/vprofile-vpc-private-subnet"
+
+jobs:
+  bake-base-image:
+    name: "Packer Bake Base Image"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # Obavezno za Workload Identity Federation (WIF)
+
+    steps:
+      # ── Korak 1: Preuzimanje infra koda (Gde su Packer i Ansible) ──────────
+      - name: Checkout Infra Code
+        uses: actions/checkout@v4
+
+      # ── Korak 2: Autentifikacija na Google Cloud preko WIF-a ───────────────
+      - name: Authenticate to GCP (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GH_ACTIONS_SA }}
+
+      # ── Korak 3: Podešavanje gcloud CLI alata ──────────────────────────────
+      - name: Set up gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ── Korak 4: Instalacija i inicijalizacija Packera ─────────────────────
+      - name: Install Packer
+        uses: hashicorp/setup-packer@main
+        with:
+          version: "1.11.0"
+
+      # ── Korak 5: Instalacija Ansible-a (Potreban Packeru na runneru) ───────
+      - name: Install Ansible
+        run: pip install ansible --quiet
+
+      # ── Korak 6: Packer Init (Preuzimanje GCP i Ansible pluginova) ─────────
+      - name: Packer Init
+        run: packer init ./packer/
+
+      # ── Korak 7: Pokretanje Packer Build-a (Čista ljuštura) ────────────────
+      - name: Packer Build
+        env:
+          PACKER_LOG: 1   # Omogućava detaljan ispis logova ako nešto pukne
+        run: |
+          # Izvlačimo kratak Git SHA od infra repoa za labelu i ime slike
+          GIT_SHA_SHORT=$(echo "${{ github.sha }}" | cut -c1-8)
+          
+          echo "Pokrećem pečenje slike sa oznakom: ${GIT_SHA_SHORT}"
+          
+          packer build \
+            -var "project_id=${{ env.PROJECT_ID }}" \
+            -var "zone=${{ env.ZONE }}" \
+            -var "subnet_id=${{ env.SUBNET_SELF_LINK }}" \
+            -var "git_sha=${GIT_SHA_SHORT}" \
+            ./packer/
+            
+          echo "✅ Novi Base Image je uspešno kreiran u 'vprofile-base' familiji!"
