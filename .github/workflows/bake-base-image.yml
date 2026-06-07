@@ -22,6 +22,8 @@ jobs:
       # ── Korak 1: Preuzimanje infra koda (Gde su Packer i Ansible) ──────────
       - name: Checkout Infra Code
         uses: actions/checkout@v4
+        with:
+          ref: 'Ansible/Packer'
 
       # ── Korak 2: Autentifikacija na Google Cloud preko WIF-a ───────────────
       - name: Authenticate to GCP (WIF)
