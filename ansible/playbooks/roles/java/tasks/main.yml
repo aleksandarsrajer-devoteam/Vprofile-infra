@@ -1,0 +1,22 @@
+---
+- name: Update apt package cache 
+  ansible.builtin.apt:
+    update_cache: true #Equivalent of apt update
+    cache_valid_time: 3600 #If somebody ran this one hour ago, don't do it
+
+- name: Install OpenJDK 17
+  ansible.builtin.apt:
+    name:
+      - openjdk-17-jdk
+      - openjdk-17-jdk-headless
+    state: present  # If package is already on the system don't do anything, if it doesn't install
+
+- name: Verify Java is installed correctly
+  ansible.builtin.command: java -version #Module for writing commands in Linux
+  register: java_check #Writes everything that the machine wrote on the screen , to variable called java_check
+  changed_when: false
+  failed_when: java_check.rc != 0 
+
+- name: Show installed Java version
+  ansible.builtin.debug:
+    var: java_check.stderr_lines #For debuging

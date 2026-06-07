@@ -4,3 +4,4 @@
 *.tfvars
 *.tfvars.json
 crash.log
+.github/workflows/terraform.yml

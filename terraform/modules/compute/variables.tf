@@ -15,10 +15,15 @@ variable "subnet_id" {
 
 variable "project_id" {
   type        = string
-  description = "GCP project ID — required for SA creation and IAM bindings"
+  description = "GCP project ID — required for SA creation, IAM bindings, and image data source"
 }
 
 variable "db_secret_id" {
   type        = string
   description = "The Secret Manager secret ID (name) for the DB password. The VM fetches the value at runtime — this is NOT the password itself."
+}
+
+variable "artifacts_bucket_name" {
+  type        = string
+  description = "Name of the GCS bucket holding vprofile-latest.war. The tomcat SA is granted objectViewer on this bucket so instances can download the WAR at boot."
 }

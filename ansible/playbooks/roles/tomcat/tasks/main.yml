@@ -1,0 +1,77 @@
+---
+- name: Create tomcat system user (no shell, no home - service account only)
+  ansible.builtin.user: #Creating a user on linux
+    name: tomcat 
+    shell: /bin/false #No shell
+    system: true 
+    create_home: false #No personal folder
+
+- name: Create Tomcat installation directory
+  ansible.builtin.file: #Managing folders,files...
+    path: /usr/local/tomcat
+    state: directory
+    owner: tomcat
+    group: tomcat
+    mode: '0755'
+
+- name: Download Tomcat 10.1.26 archive
+  ansible.builtin.get_url: #Basically a wget or curl module
+    url: "https://archive.apache.org/dist/tomcat/tomcat-10/v{{ tomcat_version }}/bin/apache-tomcat-{{ tomcat_version }}.tar.gz"
+    dest: /tmp/tomcat.tar.gz
+    mode: '0644'
+    timeout: 60
+
+- name: Extract Tomcat archive to /tmp
+  ansible.builtin.unarchive: #Module to unarchive 
+    src: /tmp/tomcat.tar.gz #Where is the .zip(.tar.)
+    dest: /tmp/
+    remote_src: true
+    creates: "/tmp/apache-tomcat-{{ tomcat_version }}"
+
+- name: Copy Tomcat files to installation directory
+  ansible.builtin.shell: #Starting a linux shell
+    cmd: "cp -r /tmp/apache-tomcat-{{ tomcat_version }}/. /usr/local/tomcat/"
+    creates: /usr/local/tomcat/bin/catalina.sh
+
+- name: Set correct ownership on entire Tomcat directory
+  ansible.builtin.file: #Managing files,folders
+    path: /usr/local/tomcat
+    owner: tomcat
+    group: tomcat
+    recurse: true
+
+- name: Make Tomcat bin scripts executable
+  ansible.builtin.file:
+    path: /usr/local/tomcat/bin
+    mode: '0755'
+    recurse: true
+
+- name: Deploy Tomcat systemd service unit file
+  ansible.builtin.template: #Take a template , fill it with var-s and place it in the directory 
+    src: tomcat.service.j2
+    dest: /etc/systemd/system/tomcat.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload systemd #Connecting to handlers
+
+# meta is a special Ansible directive — it cannot have a 'name' key -> it tells the script to execute the handlers right away
+- meta: flush_handlers
+
+- name: Install Tomcat systemd service but do NOT enable auto-start
+  # IMPORTANT: enabled must be false here.
+  # The metadata startup script controls when Tomcat starts —
+  # it must inject the DB password into the WAR FIRST, then start Tomcat.
+  # If Tomcat auto-started at boot it would connect to DB with no password.
+  ansible.builtin.systemd:
+    name: tomcat
+    enabled: false
+    daemon_reload: true
+
+- name: Remove Tomcat download artifacts
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /tmp/tomcat.tar.gz
+    - "/tmp/apache-tomcat-{{ tomcat_version }}"

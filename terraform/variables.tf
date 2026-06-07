@@ -19,12 +19,12 @@ variable "vpc_name" {
 }
 
 variable "subnet_cidr" {
-  type = string
+  type        = string
   description = "The CIDR Range of subnet"
 }
 
 variable "domain" {
-  type = string
+  type        = string
   description = "Domain of our project"
 }
 
